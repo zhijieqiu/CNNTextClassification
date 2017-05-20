@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Mar 19 12:12:31 2017
+
+@author: zhiq
+"""
+
 #! /usr/bin/env python
 
 import tensorflow as tf
@@ -49,27 +56,24 @@ print("")
 
 # Load data
 print("Loading data...")
-x_text, y = data_helpers.load_data_and_labels(FLAGS.positive_data_file, FLAGS.negative_data_file)
 
+#myadded here
+wordDict= data_helpers.GenerateWordTable("C:\\Users\\zhiq\\Desktop\\train_zh-cn.txt")
 
-# Build vocabulary
-max_document_length = max([len(x.split(" ")) for x in x_text])
-vocab_processor = learn.preprocessing.VocabularyProcessor(max_document_length)
-x = np.array(list(vocab_processor.fit_transform(x_text)))
-
-# Randomly shuffle data
-np.random.seed(10)
-shuffle_indices = np.random.permutation(np.arange(len(y)))
-x_shuffled = x[shuffle_indices]
-y_shuffled = y[shuffle_indices]
-
-# Split train/test set
-# TODO: This is very crude, should use cross-validation
-dev_sample_index = -1 * int(FLAGS.dev_sample_percentage * float(len(y)))
-x_train, x_dev = x_shuffled[:dev_sample_index], x_shuffled[dev_sample_index:]
-y_train, y_dev = y_shuffled[:dev_sample_index], y_shuffled[dev_sample_index:]
-print("Vocabulary Size: {:d}".format(len(vocab_processor.vocabulary_)))
-print("Train/Dev split: {:d}/{:d}".format(len(y_train), len(y_dev)))
+x_train_origin,y_train = data_helpers.load_data_and_labels2("C:\\Users\\zhiq\\Desktop\\train_zh-cn.txt")
+x_train = []
+for trainLine in x_train_origin:
+    x_train.append(data_helpers.GenerateVectorOfSentence(trainLine,wordDict,FLAGS.senquence_length))
+x_test_origin,y_test = data_helpers.load_data_and_labels2("C:\\Users\\zhiq\\Desktop\\test_zh-cn.txt")
+x_test = []
+for trainLine in x_test_origin:
+    x_test.append(data_helpers.GenerateVectorOfSentence(trainLine,wordDict,FLAGS.senquence_length))
+x_train = np.array(x_train)
+y_train = np.array(y_train)
+x_test = np.array(x_test)
+y_test = np.array(y_test)
+print("Vocabulary Size: {:d}".format(len(wordDict)))
+print("Train/Dev split: {:d}/{:d}".format(len(y_train),len(y_test)))
 
 
 # Training
@@ -82,10 +86,10 @@ with tf.Graph().as_default():
     sess = tf.Session(config=session_conf)
     with sess.as_default():
         cnn = MyCNNTextClassifier(
-            sequence_length=x_train.shape[1],
+            sequence_length=FLAGS.senquence_length,
             num_classes=y_train.shape[1],
-            vocab_size=len(vocab_processor.vocabulary_),
-            embedding_size=FLAGS.embedding_dim,
+            vocab_size=len(wordDict),
+            embedding_size = FLAGS.embedding_dim,
             filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
             num_filters=FLAGS.num_filters,
             l2_reg_lambda=FLAGS.l2_reg_lambda)
@@ -133,7 +137,7 @@ with tf.Graph().as_default():
         saver = tf.train.Saver(tf.global_variables(), max_to_keep=FLAGS.num_checkpoints)
 
         # Write vocabulary
-        vocab_processor.save(os.path.join(out_dir, "vocab"))
+        #vocab_processor.save(os.path.join(out_dir, "vocab"))
 
         # Initialize all variables
         sess.run(tf.global_variables_initializer())
@@ -144,8 +148,8 @@ with tf.Graph().as_default():
             """
             feed_dict = {
               cnn.input_x: x_batch,
-              cnn.input_y: y_batch,
-              cnn.dropout_keep_prob: FLAGS.dropout_keep_prob
+              cnn.input_y: y_batch
+              #cnn.dropout_keep_prob: FLAGS.dropout_keep_prob
             }
             _, step, summaries, loss, accuracy = sess.run(
                 [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
@@ -161,7 +165,7 @@ with tf.Graph().as_default():
             feed_dict = {
               cnn.input_x: x_batch,
               cnn.input_y: y_batch,
-              cnn.dropout_keep_prob: 1.0
+              #cnn.dropout_keep_prob: 1.0
             }
             step, summaries, loss, accuracy = sess.run(
                 [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
@@ -181,7 +185,7 @@ with tf.Graph().as_default():
             current_step = tf.train.global_step(sess, global_step)
             if current_step % FLAGS.evaluate_every == 0:
                 print("\nEvaluation:")
-                dev_step(x_dev, y_dev, writer=dev_summary_writer)
+                dev_step(x_test, y_test, writer=dev_summary_writer)
                 print("")
             if current_step % FLAGS.checkpoint_every == 0:
                 path = saver.save(sess, checkpoint_prefix, global_step=current_step)
